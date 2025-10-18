@@ -34,7 +34,7 @@
 
 When you loot an item, LootSense opens a small decision frame that gives you the options **Always Keep**, **Always Vendor**, **Always Delete**, or **Ignore**. Choosing *Ignore* means the addon will forget the item until you encounter it again.
 
-Next time you loot an item you've marked, LootSense will automatically perform the chosen action — saving you time, bag space, and sanity.
+Next time you loot an item you've marked, LootSense will automatically perform the chosen action saving you time, bag space, and sanity.
 
 And if you change your mind later, there’s a handy **Settings** menu accessible via the minimap button 
 <p align="center">
