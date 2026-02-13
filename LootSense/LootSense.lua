@@ -5,7 +5,65 @@ local gfind = string.gmatch or string.gfind
 LootSense_keep   = LootSense_keep   or {}
 LootSense_vendor = LootSense_vendor or {}
 LootSense_delete = LootSense_delete or {}
-local versionNumber = "1.0.0"
+LootSense_DebugLog = LootSense_DebugLog or {}
+LootSense_DebugEnabled = LootSense_DebugEnabled or false
+
+local MAX_LOG_ENTRIES = 500
+local versionNumber = "1.0.1"
+
+-- Debug/Error logging functions
+local function LootSense_Log(level, message)
+    if not LootSense_DebugLog then LootSense_DebugLog = {} end
+    
+    local timestamp = date("%Y-%m-%d %H:%M:%S")
+    local entry = {
+        time = timestamp,
+        level = level,
+        msg = message
+    }
+    
+    table.insert(LootSense_DebugLog, entry)
+    
+    -- Keep log size manageable
+    while #LootSense_DebugLog > MAX_LOG_ENTRIES do
+        table.remove(LootSense_DebugLog, 1)
+    end
+    
+    -- Also print to chat if debug mode is enabled
+    if LootSense_DebugEnabled then
+        local color = "|cffffffff"
+        if level == "ERROR" then color = "|cffff5555" end
+        if level == "WARN" then color = "|cffffff55" end
+        if level == "DEBUG" then color = "|cff55ff55" end
+        DEFAULT_CHAT_FRAME:AddMessage(color .. "[LootSense " .. level .. "]|r " .. message)
+    end
+end
+
+local function LootSense_LogError(msg)
+    LootSense_Log("ERROR", msg)
+end
+
+local function LootSense_LogWarn(msg)
+    LootSense_Log("WARN", msg)
+end
+
+local function LootSense_LogDebug(msg)
+    LootSense_Log("DEBUG", msg)
+end
+
+local function LootSense_LogInfo(msg)
+    LootSense_Log("INFO", msg)
+end
+
+-- Safe call wrapper to catch errors
+local function LootSense_SafeCall(func, ...)
+    local success, err = pcall(func, ...)
+    if not success then
+        LootSense_LogError("Error: " .. tostring(err))
+        return false
+    end
+    return true
+end
 local colors = {
   [0] = {0.6, 0.6, 0.6},   
   [1] = {1, 1, 1},         
@@ -17,7 +75,8 @@ local colors = {
 local loginFrame = CreateFrame("Frame")
 loginFrame:RegisterEvent("PLAYER_LOGIN")
 loginFrame:SetScript("OnEvent", function(self, event)
-    DEFAULT_CHAT_FRAME:AddMessage("LootSense [" .. versionNumber .. "]|cff00FF00 loaded|cffffffff")
+    DEFAULT_CHAT_FRAME:AddMessage("LootSense [" .. versionNumber .. "]|cff00FF00 loaded|cffffffff - type /ls for commands")
+    LootSense_LogInfo("Addon loaded - version " .. versionNumber)
 end)
 
 
@@ -41,14 +100,14 @@ LootSense_MinimapButton:SetNormalTexture("Interface\\Minimap\\UI-Minimap-Backgro
 LootSense_MinimapButton:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
 LootSense_MinimapButton:GetHighlightTexture():SetAlpha(0.6)
 
-LootSense_MinimapButton:SetScript("OnEnter", function()
-    GameTooltip:SetOwner(this, "ANCHOR_LEFT")
+LootSense_MinimapButton:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_LEFT")
     GameTooltip:AddLine("|cff33ffccLoot|cffffffffSense")
     GameTooltip:AddLine("Left-click: Open LootSense", 1,1,1)
     GameTooltip:AddLine("Right-click + drag: Move button", 0.7,0.7,0.7)
     GameTooltip:Show()
 end)
-LootSense_MinimapButton:SetScript("OnLeave", function()
+LootSense_MinimapButton:SetScript("OnLeave", function(self)
     GameTooltip:Hide()
 end)
 
@@ -60,8 +119,8 @@ local function UpdateMinimapButtonPosition()
     LootSense_MinimapButton:SetPoint("CENTER", Minimap, "CENTER", x, y)
 end
 
-LootSense_MinimapButton:SetScript("OnClick", function()
-    if arg1 == "LeftButton" then
+LootSense_MinimapButton:SetScript("OnClick", function(self, button)
+    if button == "LeftButton" then
         if LootSenseList:IsShown() then
             LootSenseList:Hide()
         else
@@ -70,11 +129,11 @@ LootSense_MinimapButton:SetScript("OnClick", function()
     end
 end)
 
-LootSense_MinimapButton:SetScript("OnMouseDown", function()
-    if arg1 == "RightButton" then
-        this.isDragging = true
-        this:SetScript("OnUpdate", function()
-            if this.isDragging then
+LootSense_MinimapButton:SetScript("OnMouseDown", function(self, button)
+    if button == "RightButton" then
+        self.isDragging = true
+        self:SetScript("OnUpdate", function(self)
+            if self.isDragging then
                 local mx, my = Minimap:GetCenter()
                 local px, py = GetCursorPosition()
                 local scale = Minimap:GetEffectiveScale()
@@ -87,15 +146,15 @@ LootSense_MinimapButton:SetScript("OnMouseDown", function()
     end
 end)
 
-LootSense_MinimapButton:SetScript("OnMouseUp", function()
-    this.isDragging = false
-    this:SetScript("OnUpdate", nil)
+LootSense_MinimapButton:SetScript("OnMouseUp", function(self)
+    self.isDragging = false
+    self:SetScript("OnUpdate", nil)
 end)
 
 local minimapInit = CreateFrame("Frame")
 minimapInit:RegisterEvent("ADDON_LOADED")
-minimapInit:SetScript("OnEvent", function()
-    if arg1 == "LootSense" then
+minimapInit:SetScript("OnEvent", function(self, event, addon)
+    if addon == "LootSense" then
         UpdateMinimapButtonPosition()
     end
 end)
@@ -108,15 +167,15 @@ end)
 local AutoTrash = CreateFrame("Frame", "AutoTrashFrame", UIParent)
 AutoTrash:RegisterEvent("ITEM_PUSH")
 
-AutoTrash:SetScript("OnEvent", function()
+AutoTrash:SetScript("OnEvent", function(self, event)
 	if LootSense_paused then return end
     AutoTrash.active = true
     AutoTrash:Show()
 end)
 
-AutoTrash:SetScript("OnUpdate", function()
-    if (this.nextScan or 0) > GetTime() then return end
-    this.nextScan = GetTime() + 0.15
+AutoTrash:SetScript("OnUpdate", function(self)
+    if (self.nextScan or 0) > GetTime() then return end
+    self.nextScan = GetTime() + 0.15
 
     for bagIndex = 0, 4 do
         for slotIndex = 1, GetContainerNumSlots(bagIndex) do
@@ -128,12 +187,13 @@ AutoTrash:SetScript("OnUpdate", function()
                     local lowerName = string.lower(itemName)
 
                    
-                    for n = 1, table.getn(LootSense_delete) do
+                    for n = 1, #LootSense_delete do
                         local data = LootSense_delete[n]
                         if data.name and string.lower(data.name) == lowerName then
                             ClearCursor()
                             PickupContainerItem(bagIndex, slotIndex)
                             DeleteCursorItem()
+                            LootSense_LogInfo("Auto-trashed from bags: " .. itemName)
                             return
                         end
                     end
@@ -142,7 +202,7 @@ AutoTrash:SetScript("OnUpdate", function()
         end
     end
 
-    this:Hide()
+    self:Hide()
 end)
 
 
@@ -163,15 +223,15 @@ LootSenseList:Hide()
 LootSenseList:SetMovable(true)
 LootSenseList:EnableMouse(true)
 LootSenseList:RegisterForDrag("LeftButton")
-LootSenseList:SetScript("OnDragStart", function() this:StartMoving() end)
-LootSenseList:SetScript("OnDragStop", function() this:StopMovingOrSizing() end)
+LootSenseList:SetScript("OnDragStart", function(self) self:StartMoving() end)
+LootSenseList:SetScript("OnDragStop", function(self) self:StopMovingOrSizing() end)
 
 LootSenseList.closeBtn = CreateFrame("Button", nil, LootSenseList, "UIPanelButtonTemplate")
 LootSenseList.closeBtn:SetWidth(24)
 LootSenseList.closeBtn:SetHeight(24)
 LootSenseList.closeBtn:SetText("X")
 LootSenseList.closeBtn:SetPoint("TOPRIGHT", -5, -5)
-LootSenseList.closeBtn:SetScript("OnClick", function()
+LootSenseList.closeBtn:SetScript("OnClick", function(self)
     LootSenseList:Hide()
 end)
 
@@ -222,7 +282,7 @@ LootSenseList.tabs.manage:SetText("Manage Lists")
 LootSenseList.tabs.manage.tabName = "LootSenseTabManage"
 LootSenseList.tabs.manage:SetID(1)
 LootSenseList.tabs.manage:SetPoint("BOTTOMLEFT", LootSenseList, "BOTTOMLEFT", 10, -30)
-LootSenseList.tabs.manage:SetScript("OnClick", function() SwitchTab("manage") end)
+LootSenseList.tabs.manage:SetScript("OnClick", function(self) SwitchTab("manage") end)
 ResizeTab(LootSenseList.tabs.manage)
 
 LootSenseList.tabs.autoDelete = CreateFrame("Button", "LootSenseTabAutoDelete", LootSenseList, "CharacterFrameTabButtonTemplate")
@@ -230,7 +290,7 @@ LootSenseList.tabs.autoDelete:SetText("Auto Delete")
 LootSenseList.tabs.autoDelete.tabName = "LootSenseTabAutoDelete"
 LootSenseList.tabs.autoDelete:SetID(2)
 LootSenseList.tabs.autoDelete:SetPoint("LEFT", LootSenseList.tabs.manage, "RIGHT", -15, 0)
-LootSenseList.tabs.autoDelete:SetScript("OnClick", function() SwitchTab("autoDelete") end)
+LootSenseList.tabs.autoDelete:SetScript("OnClick", function(self) SwitchTab("autoDelete") end)
 ResizeTab(LootSenseList.tabs.autoDelete)
 
 LootSenseList.tabs.settings = CreateFrame("Button", "LootSenseTabSettings", LootSenseList, "CharacterFrameTabButtonTemplate")
@@ -238,7 +298,7 @@ LootSenseList.tabs.settings:SetText("Settings")
 LootSenseList.tabs.settings.tabName = "LootSenseTabSettings"
 LootSenseList.tabs.settings:SetID(3)
 LootSenseList.tabs.settings:SetPoint("LEFT", LootSenseList.tabs.autoDelete, "RIGHT", -15, 0)
-LootSenseList.tabs.settings:SetScript("OnClick", function() SwitchTab("settings") end)
+LootSenseList.tabs.settings:SetScript("OnClick", function(self) SwitchTab("settings") end)
 ResizeTab(LootSenseList.tabs.settings)
 
 
@@ -258,8 +318,8 @@ LootSenseList.pauseCheck.text:SetPoint("LEFT", LootSenseList.pauseCheck, "RIGHT"
 LootSenseList.pauseCheck.text:SetText("Pause LootSense")
 
 
-LootSenseList.pauseCheck:SetScript("OnClick", function()
-	LootSense_paused = this:GetChecked()
+LootSenseList.pauseCheck:SetScript("OnClick", function(self)
+	LootSense_paused = self:GetChecked()
 	if LootSense_paused then
 		DEFAULT_CHAT_FRAME:AddMessage("|cffaaaaaa[LootSense]|r Addon paused")
 	else
@@ -276,7 +336,7 @@ LootSenseList.autoDeleteTitle = LootSenseList.autoDeleteContent:CreateFontString
 LootSenseList.autoDeleteTitle:SetPoint("TOP", 0, -15)
 
 local function AddTooltip(frame, title, text)
-  frame:SetScript("OnEnter", function()
+  frame:SetScript("OnEnter", function(self)
     if not GameTooltip then return end
     GameTooltip:SetOwner(frame, "ANCHOR_RIGHT")
     GameTooltip:SetText(title)
@@ -286,7 +346,7 @@ local function AddTooltip(frame, title, text)
     GameTooltip:Show()
   end)
 
-  frame:SetScript("OnLeave", function()
+  frame:SetScript("OnLeave", function(self)
     if GameTooltip then GameTooltip:Hide() end
   end)
 end
@@ -335,7 +395,7 @@ AddTooltip(LootSenseList.blueCheck, "|cff0070ddBlue items|r", "Automatically add
 
 local f = CreateFrame("Frame")
 f:RegisterEvent("ADDON_LOADED")
-f:SetScript("OnEvent", function()
+f:SetScript("OnEvent", function(self, event)
 
 	if not LootSense_autoDelete then
 		LootSense_autoDelete = {
@@ -362,24 +422,24 @@ end)
 
 
 
-LootSenseList.grayCheck:SetScript("OnClick", function()
-    LootSense_autoDelete.gray = this:GetChecked()
-    DEFAULT_CHAT_FRAME:AddMessage("|cffaaaaaa[LootSense]|r Auto-delete gray items: " .. (this:GetChecked() and "|cff33ff33ON|r" or "|cffff3333OFF|r"))
+LootSenseList.grayCheck:SetScript("OnClick", function(self)
+    LootSense_autoDelete.gray = self:GetChecked()
+    DEFAULT_CHAT_FRAME:AddMessage("|cffaaaaaa[LootSense]|r Auto-delete gray items: " .. (self:GetChecked() and "|cff33ff33ON|r" or "|cffff3333OFF|r"))
 end)
 
-LootSenseList.whiteCheck:SetScript("OnClick", function()
-    LootSense_autoDelete.white = this:GetChecked()
-    DEFAULT_CHAT_FRAME:AddMessage("|cffffffff[LootSense]|r Auto-delete white items: " .. (this:GetChecked() and "|cff33ff33ON|r" or "|cffff3333OFF|r"))
+LootSenseList.whiteCheck:SetScript("OnClick", function(self)
+    LootSense_autoDelete.white = self:GetChecked()
+    DEFAULT_CHAT_FRAME:AddMessage("|cffffffff[LootSense]|r Auto-delete white items: " .. (self:GetChecked() and "|cff33ff33ON|r" or "|cffff3333OFF|r"))
 end)
 
-LootSenseList.greenCheck:SetScript("OnClick", function()
-    LootSense_autoDelete.green = this:GetChecked()
-    DEFAULT_CHAT_FRAME:AddMessage("|cff55ff55[LootSense]|r Auto-delete green items: " .. (this:GetChecked() and "|cff33ff33ON|r" or "|cffff3333OFF|r"))
+LootSenseList.greenCheck:SetScript("OnClick", function(self)
+    LootSense_autoDelete.green = self:GetChecked()
+    DEFAULT_CHAT_FRAME:AddMessage("|cff55ff55[LootSense]|r Auto-delete green items: " .. (self:GetChecked() and "|cff33ff33ON|r" or "|cffff3333OFF|r"))
 end)
 
-LootSenseList.blueCheck:SetScript("OnClick", function()
-    LootSense_autoDelete.blue = this:GetChecked()
-    DEFAULT_CHAT_FRAME:AddMessage("|cff0070dd[LootSense]|r Auto-delete blue items: " .. (this:GetChecked() and "|cff33ff33ON|r" or "|cffff3333OFF|r"))
+LootSenseList.blueCheck:SetScript("OnClick", function(self)
+    LootSense_autoDelete.blue = self:GetChecked()
+    DEFAULT_CHAT_FRAME:AddMessage("|cff0070dd[LootSense]|r Auto-delete blue items: " .. (self:GetChecked() and "|cff33ff33ON|r" or "|cffff3333OFF|r"))
 end)
 
 
@@ -415,7 +475,7 @@ local function RefreshLootSenseList()
     local index = 1
 
     local function addSection(list, listName)
-        for i = 1, table.getn(list) do
+        for i = 1, #list do
             local entry = list[i]
             local itemID = entry.id
             local itemName = entry.name
@@ -455,8 +515,8 @@ local function RefreshLootSenseList()
                 frame.remove:SetHeight(20)
                 frame.remove:SetText("X")
                 frame.remove:SetPoint("RIGHT", frame, "RIGHT", -5, 0)
-                frame.remove:SetScript("OnClick", function()
-                    for j = 1, table.getn(list) do
+                frame.remove:SetScript("OnClick", function(self)
+                    for j = 1, #list do
                         if list[j].id == itemID then
                             table.remove(list, j)
                             RefreshLootSenseList()
@@ -504,7 +564,7 @@ local function createFilterButton(parent, label, filter)
     btn:SetPoint("TOPLEFT", xOffset, yOffset)
     xOffset = xOffset + buttonWidth + spacing
 
-    btn:SetScript("OnClick", function()
+    btn:SetScript("OnClick", function(self)
         LootSenseList.filter = filter
         RefreshLootSenseList()
     end)
@@ -534,8 +594,8 @@ LootSenseList.search.placeholder:SetPoint("LEFT", 5, 0)
 LootSenseList.search.placeholder:SetText("Search...")
 LootSenseList.search.placeholder:SetTextColor(0.7,0.7,0.7,1)
 
-LootSenseList.search:SetScript("OnEnterPressed", function() LootSenseList.search:ClearFocus() end)
-LootSenseList.search:SetScript("OnTextChanged", function()
+LootSenseList.search:SetScript("OnEnterPressed", function(self) LootSenseList.search:ClearFocus() end)
+LootSenseList.search:SetScript("OnTextChanged", function(self)
     if LootSenseList.search:GetText() == "" then
         LootSenseList.search.placeholder:Show()
     else
@@ -567,12 +627,12 @@ local function tContains(tbl, item)
 end
 
 local function AddTooltip(button, text)
-    button:SetScript("OnEnter", function()
+    button:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(button, "ANCHOR_RIGHT")
         GameTooltip:SetText(text)
         GameTooltip:Show()
     end)
-    button:SetScript("OnLeave", function()
+    button:SetScript("OnLeave", function(self)
         GameTooltip:Hide()
     end)
 end
@@ -594,16 +654,20 @@ local function createButtonAction(slot, action, name, itemID, itemFrame)
             table.insert(LootSense_keep, entry)
             LootSlot(slot)
             DEFAULT_CHAT_FRAME:AddMessage("Keep: "..name.." (ID: "..itemID..")")
+            LootSense_LogInfo("Added to KEEP list: " .. name .. " (ID: " .. itemID .. ")")
         elseif action == "vendor" then
             table.insert(LootSense_vendor, entry)
             LootSlot(slot)
             DEFAULT_CHAT_FRAME:AddMessage("Vendor: "..name.." (ID: "..itemID..")")
+            LootSense_LogInfo("Added to VENDOR list: " .. name .. " (ID: " .. itemID .. ")")
         elseif action == "throw" then
             table.insert(LootSense_delete, entry)
             LootSlot(slot)
             DEFAULT_CHAT_FRAME:AddMessage("Delete: "..name.." (ID: "..itemID..")")
+            LootSense_LogInfo("Added to DELETE list: " .. name .. " (ID: " .. itemID .. ")")
         elseif action == "ignore" then
             DEFAULT_CHAT_FRAME:AddMessage("Ignored: "..name.." (ID: "..itemID..")")
+            LootSense_LogDebug("Ignored item: " .. name .. " (ID: " .. itemID .. ")")
         end
 
         if itemFrame then
@@ -627,8 +691,37 @@ SlashCmdList["LootSenseLIST"] = function(msg)
             RefreshLootSenseList()          
             LootSenseList:Show()
         end
+    elseif cmd == "debug" then
+        LootSense_DebugEnabled = not LootSense_DebugEnabled
+        if LootSense_DebugEnabled then
+            DEFAULT_CHAT_FRAME:AddMessage("|cff33ffcc[LootSense]|r Debug mode |cff55ff55ENABLED|r - errors will show in chat")
+        else
+            DEFAULT_CHAT_FRAME:AddMessage("|cff33ffcc[LootSense]|r Debug mode |cffff5555DISABLED|r")
+        end
+    elseif cmd == "log" then
+        if not LootSense_DebugLog or #LootSense_DebugLog == 0 then
+            DEFAULT_CHAT_FRAME:AddMessage("|cff33ffcc[LootSense]|r No log entries.")
+        else
+            DEFAULT_CHAT_FRAME:AddMessage("|cff33ffcc[LootSense]|r === Recent Log Entries (last 10) ===")
+            local startIdx = math.max(1, #LootSense_DebugLog - 9)
+            for i = startIdx, #LootSense_DebugLog do
+                local entry = LootSense_DebugLog[i]
+                local color = "|cffffffff"
+                if entry.level == "ERROR" then color = "|cffff5555" end
+                if entry.level == "WARN" then color = "|cffffff55" end
+                if entry.level == "DEBUG" then color = "|cff55ff55" end
+                DEFAULT_CHAT_FRAME:AddMessage(color .. "[" .. entry.time .. " " .. entry.level .. "]|r " .. entry.msg)
+            end
+        end
+    elseif cmd == "clearlog" then
+        LootSense_DebugLog = {}
+        DEFAULT_CHAT_FRAME:AddMessage("|cff33ffcc[LootSense]|r Log cleared.")
     else
-        DEFAULT_CHAT_FRAME:AddMessage("|cff33ffccUsage:|r /sl list")
+        DEFAULT_CHAT_FRAME:AddMessage("|cff33ffcc[LootSense]|r Commands:")
+        DEFAULT_CHAT_FRAME:AddMessage("  |cffffffff/ls list|r - Open item list manager")
+        DEFAULT_CHAT_FRAME:AddMessage("  |cffffffff/ls debug|r - Toggle debug output to chat")
+        DEFAULT_CHAT_FRAME:AddMessage("  |cffffffff/ls log|r - Show recent log entries")
+        DEFAULT_CHAT_FRAME:AddMessage("  |cffffffff/ls clearlog|r - Clear the debug log")
     end
 end
 
@@ -640,8 +733,8 @@ LootHelperFrame:Hide()
 LootHelperFrame:SetMovable(true)
 LootHelperFrame:EnableMouse(true)
 LootHelperFrame:RegisterForDrag("LeftButton")
-LootHelperFrame:SetScript("OnDragStart", function() this:StartMoving() end)
-LootHelperFrame:SetScript("OnDragStop", function() this:StopMovingOrSizing() end)
+LootHelperFrame:SetScript("OnDragStart", function(self) self:StartMoving() end)
+LootHelperFrame:SetScript("OnDragStop", function(self) self:StopMovingOrSizing() end)
 LootHelperFrame.settingsBtn = CreateFrame("Button", nil, LootHelperFrame)
 LootHelperFrame.settingsBtn:SetWidth(20)
 LootHelperFrame.settingsBtn:SetHeight(20)
@@ -651,7 +744,7 @@ LootHelperFrame.settingsBtn.icon = LootHelperFrame.settingsBtn:CreateTexture(nil
 LootHelperFrame.settingsBtn.icon:SetAllPoints()
 LootHelperFrame.settingsBtn.icon:SetTexture("Interface\\Icons\\INV_Gizmo_01") 
 
-LootHelperFrame.settingsBtn:SetScript("OnClick", function()
+LootHelperFrame.settingsBtn:SetScript("OnClick", function(self)
     if LootSenseList:IsShown() then
         LootSenseList:Hide()
     else
@@ -659,13 +752,13 @@ LootHelperFrame.settingsBtn:SetScript("OnClick", function()
     end
 end)
 
-LootHelperFrame.settingsBtn:SetScript("OnEnter", function()
+LootHelperFrame.settingsBtn:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(LootHelperFrame.settingsBtn, "ANCHOR_RIGHT")
     GameTooltip:SetText("Manage", 1, 1, 1)
     GameTooltip:Show()
 end)
 
-LootHelperFrame.settingsBtn:SetScript("OnLeave", function()
+LootHelperFrame.settingsBtn:SetScript("OnLeave", function(self)
     GameTooltip:Hide()
 end)
 
@@ -741,30 +834,30 @@ local function CreateItemRow(parent, slot, texture, name, quality, itemLink, ite
     end
 
    
-    row.textBtn:SetScript("OnEnter", function()
-        GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
+    row.textBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:SetLootItem(slot) 
         GameTooltip:Show()
         row.highlight:Show()
     end)
     
-    row.textBtn:SetScript("OnLeave", function()
+    row.textBtn:SetScript("OnLeave", function(self)
         GameTooltip:Hide()
         row.highlight:Hide()
     end)
     
-    row.textBtn:SetScript("OnClick", function()
-        GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
+    row.textBtn:SetScript("OnClick", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:SetLootItem(slot)
         GameTooltip:Show()
     end)
 
    
-    row:SetScript("OnEnter", function()
+    row:SetScript("OnEnter", function(self)
         row.highlight:Show()
     end)
     
-    row:SetScript("OnLeave", function()
+    row:SetScript("OnLeave", function(self)
         row.highlight:Hide()
     end)
 
@@ -780,19 +873,19 @@ local function CreateItemRow(parent, slot, texture, name, quality, itemLink, ite
         btn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
         
        
-        btn:SetScript("OnEnter", function()
-            GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
+        btn:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
             GameTooltip:SetText(tooltip)
             GameTooltip:Show()
             row.highlight:Show()
         end)
         
-        btn:SetScript("OnLeave", function()
+        btn:SetScript("OnLeave", function(self)
             GameTooltip:Hide()
             row.highlight:Hide()
         end)
 
-btn:SetScript("OnClick", function()
+btn:SetScript("OnClick", function(self)
     createButtonAction(slot, action, name, itemID, row)()
     
    
@@ -802,7 +895,7 @@ btn:SetScript("OnClick", function()
     
     row:Hide()
    
-    for i=1, table.getn(LootHelperFrame.items) do
+    for i=1, #LootHelperFrame.items do
         if LootHelperFrame.items[i] == row then
             table.remove(LootHelperFrame.items, i)
             LootHelperFrame.count = LootHelperFrame.count - 1
@@ -827,16 +920,17 @@ local lootFrame = CreateFrame("Frame")
 lootFrame:RegisterEvent("LOOT_OPENED")
 lootFrame:RegisterEvent("LOOT_CLOSED")
 
-lootFrame:SetScript("OnEvent", function()
+lootFrame:SetScript("OnEvent", function(self, event)
     if event == "LOOT_OPENED" then
 		if LootSense_paused then return end
         ClearLootHelper()
         local numLoot = GetNumLootItems()
+        LootSense_LogDebug("LOOT_OPENED - " .. numLoot .. " items")
         local lastRow = nil
 
        
         local function isInList(itemID, list)
-            for i = 1, table.getn(list) do
+            for i = 1, #list do
                 if list[i].id == itemID then
                     return true
                 end
@@ -862,23 +956,29 @@ lootFrame:SetScript("OnEvent", function()
 						table.insert(LootSense_delete, { id = itemID, name = name })
 						LootSlot(slot)
 						DEFAULT_CHAT_FRAME:AddMessage("|cffff5555Auto-deleted gray:|r " .. name)
+						LootSense_LogInfo("Auto-delete (gray): " .. name .. " (ID: " .. itemID .. ")")
 						return
 					elseif LootSense_autoDelete.white and quality == 1 and not isInList(itemID, LootSense_delete) then
 						table.insert(LootSense_delete, { id = itemID, name = name })
 						LootSlot(slot)
 						DEFAULT_CHAT_FRAME:AddMessage("|cffffffffAuto-deleted white:|r " .. name)
+						LootSense_LogInfo("Auto-delete (white): " .. name .. " (ID: " .. itemID .. ")")
 						return
 					elseif LootSense_autoDelete.green and quality == 2 and not isInList(itemID, LootSense_delete) then
 						table.insert(LootSense_delete, { id = itemID, name = name })
 						LootSlot(slot)
 						DEFAULT_CHAT_FRAME:AddMessage("|cff55ff55Auto-deleted green:|r " .. name)
+						LootSense_LogInfo("Auto-delete (green): " .. name .. " (ID: " .. itemID .. ")")
 						return
 					elseif LootSense_autoDelete.blue and quality == 3 and not isInList(itemID, LootSense_delete) then
 						table.insert(LootSense_delete, { id = itemID, name = name })
 						LootSlot(slot)
 						DEFAULT_CHAT_FRAME:AddMessage("|cff0070ddAuto-deleted blue:|r " .. name)
+						LootSense_LogInfo("Auto-delete (blue): " .. name .. " (ID: " .. itemID .. ")")
 						return
 					end
+				else
+					LootSense_LogWarn("Could not get itemID for: " .. (name or itemName or "unknown"))
 				end
 
 
@@ -915,9 +1015,10 @@ AutoSell:RegisterEvent("MERCHANT_CLOSED")
 AutoSell.active = false
 AutoSell.lastCheck = 0
 
-AutoSell:SetScript("OnEvent", function()
+AutoSell:SetScript("OnEvent", function(self, event)
     if event == "MERCHANT_SHOW" then
 	if LootSense_paused then return end
+        LootSense_LogDebug("MERCHANT_SHOW - checking for items to sell")
         AutoSell.active = true
         AutoSell:Show()
     elseif event == "MERCHANT_CLOSED" then
@@ -926,7 +1027,7 @@ AutoSell:SetScript("OnEvent", function()
     end
 end)
 
-AutoSell:SetScript("OnUpdate", function()
+AutoSell:SetScript("OnUpdate", function(self)
    
     if GetTime() < AutoSell.lastCheck then return end
     AutoSell.lastCheck = GetTime() + 0.1
@@ -941,11 +1042,12 @@ AutoSell:SetScript("OnUpdate", function()
                 local itemName = rawLink and GetItemInfo(rawLink)
                 if itemName then
                     itemName = string.lower(itemName)
-                    for i = 1, table.getn(LootSense_vendor) do
+                    for i = 1, #LootSense_vendor do
                         local entry = LootSense_vendor[i]
                         if entry.name and string.lower(entry.name) == itemName then
                             ClearCursor()
                             UseContainerItem(bag, slot)
+                            LootSense_LogInfo("Auto-sold to vendor: " .. entry.name)
                             return
                         end
                     end

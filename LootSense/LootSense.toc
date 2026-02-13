@@ -1,7 +1,7 @@
-## Interface: 11200
+## Interface: 30300
 ## Title: |cff33ffccLoot|cffffffffSense
 ## Author: Pumpan
 ## Notes: Automatically deletes or vendors specified items
 ## Version: 1.0
-## SavedVariablesPerCharacter: LootSense_vendor, LootSense_delete, LootSense_keep, LootSense_autoDelete, LootSense_MinimapPos, LootSense_paused
+## SavedVariablesPerCharacter: LootSense_vendor, LootSense_delete, LootSense_keep, LootSense_autoDelete, LootSense_MinimapPos, LootSense_paused, LootSense_DebugLog, LootSense_DebugEnabled
 LootSense.lua
