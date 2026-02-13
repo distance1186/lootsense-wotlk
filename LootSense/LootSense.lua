@@ -15,7 +15,7 @@ local versionNumber = "1.0.2"
 local BagScanQueue = {}
 local BagScanDisplayed = {}
 local MAX_DISPLAYED_ITEMS = 5
-local SeenItemsThisSession = {} -- Track items we've already prompted for this session
+local ProcessedBagItems = {} -- Track (bag,slot) combinations we've already processed
 
 -- Debug/Error logging functions
 local function LootSense_Log(level, message)
@@ -253,7 +253,6 @@ function SwitchTab(tabName)
  
   LootSenseList.manageContent:Hide()
   LootSenseList.autoDeleteContent:Hide()
-  LootSenseList.autoVendorContent:Hide()
   LootSenseList.settingsContent:Hide()
 
  
@@ -266,11 +265,6 @@ function SwitchTab(tabName)
     LootSenseList.title:SetText("Auto Delete")
     LootSenseList.autoDeleteContent:Show()
     PanelTemplates_SelectTab(LootSenseList.tabs.autoDelete)
-
-  elseif tabName == "autoVendor" then
-    LootSenseList.title:SetText("Auto Vendor")
-    LootSenseList.autoVendorContent:Show()
-    PanelTemplates_SelectTab(LootSenseList.tabs.autoVendor)
 
   elseif tabName == "settings" then
     LootSenseList.title:SetText("Settings")
@@ -305,19 +299,11 @@ LootSenseList.tabs.autoDelete:SetPoint("LEFT", LootSenseList.tabs.manage, "RIGHT
 LootSenseList.tabs.autoDelete:SetScript("OnClick", function(self) SwitchTab("autoDelete") end)
 ResizeTab(LootSenseList.tabs.autoDelete)
 
-LootSenseList.tabs.autoVendor = CreateFrame("Button", "LootSenseTabAutoVendor", LootSenseList, "CharacterFrameTabButtonTemplate")
-LootSenseList.tabs.autoVendor:SetText("Auto Vendor")
-LootSenseList.tabs.autoVendor.tabName = "LootSenseTabAutoVendor"
-LootSenseList.tabs.autoVendor:SetID(3)
-LootSenseList.tabs.autoVendor:SetPoint("LEFT", LootSenseList.tabs.autoDelete, "RIGHT", -15, 0)
-LootSenseList.tabs.autoVendor:SetScript("OnClick", function(self) SwitchTab("autoVendor") end)
-ResizeTab(LootSenseList.tabs.autoVendor)
-
 LootSenseList.tabs.settings = CreateFrame("Button", "LootSenseTabSettings", LootSenseList, "CharacterFrameTabButtonTemplate")
 LootSenseList.tabs.settings:SetText("Settings")
 LootSenseList.tabs.settings.tabName = "LootSenseTabSettings"
-LootSenseList.tabs.settings:SetID(4)
-LootSenseList.tabs.settings:SetPoint("LEFT", LootSenseList.tabs.autoVendor, "RIGHT", -15, 0)
+LootSenseList.tabs.settings:SetID(3)
+LootSenseList.tabs.settings:SetPoint("LEFT", LootSenseList.tabs.autoDelete, "RIGHT", -15, 0)
 LootSenseList.tabs.settings:SetScript("OnClick", function(self) SwitchTab("settings") end)
 ResizeTab(LootSenseList.tabs.settings)
 
@@ -1067,12 +1053,13 @@ BagScanner:SetScript("OnUpdate", function(self, elapsed)
                 
                 if itemID then
                     local itemName, _, itemRarity, _, _, _, _, _, _, itemTexture = GetItemInfo(link)
+                    local itemKey = bag .. ":" .. slot -- Unique key for this item location
                     
-                    if itemName and not IsItemInAnyList(itemID) and not SeenItemsThisSession[itemID] then
-                        -- Check if already in queue
+                    if itemName and not IsItemInAnyList(itemID) and not ProcessedBagItems[itemKey] then
+                        -- Check if already in queue (by ID)
                         local inQueue = false
                         for _, q in pairs(BagScanQueue) do
-                            if q.id == itemID then inQueue = true break end
+                            if q.id == itemID and q.bag == bag and q.slot == slot then inQueue = true break end
                         end
                         
                         if not inQueue then
@@ -1108,7 +1095,7 @@ BagScanner:SetScript("OnUpdate", function(self, elapsed)
                                 LootSense_LogInfo("Auto-vendor (blue, bag scan): " .. itemName)
                             else
                                 -- Add to queue for user decision
-                                SeenItemsThisSession[itemID] = true
+                                ProcessedBagItems[itemKey] = true
                                 table.insert(BagScanQueue, {
                                     id = itemID,
                                     name = itemName,
