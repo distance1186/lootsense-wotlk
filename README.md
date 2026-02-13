@@ -30,9 +30,11 @@
 
 ## 🧠 Overview
 
+All Credit for this goes to pumpan I'm just lazy and edited it.
+
 **LootSense** is a **smart loot management addon** for **World of Warcraft 1.12.1 (Vanilla)** that helps you automatically **keep, vendor, or delete** specific items based on your personal preferences.
 
-When you loot an item, LootSense opens a small decision frame that gives you the options **Always Keep**, **Always Vendor**, **Always Delete**, or **Ignore**. Choosing *Ignore* means the addon will forget the item until you encounter it again.
+When you loot an item, LootSense opens a small decision frame that gives you the options **Always Keep**, **Always Vendor**, **Always Delete**, or **Ignore**. Choosing *Ignore* means the addon will forget the item until you encounter it la again.
 
 Next time you loot an item you've marked, LootSense will automatically perform the chosen action saving you time, bag space, and sanity.
 
