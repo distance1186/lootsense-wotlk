@@ -247,6 +247,7 @@ function SwitchTab(tabName)
  
   LootSenseList.manageContent:Hide()
   LootSenseList.autoDeleteContent:Hide()
+  LootSenseList.autoVendorContent:Hide()
   LootSenseList.settingsContent:Hide()
 
  
@@ -259,6 +260,11 @@ function SwitchTab(tabName)
     LootSenseList.title:SetText("Auto Delete")
     LootSenseList.autoDeleteContent:Show()
     PanelTemplates_SelectTab(LootSenseList.tabs.autoDelete)
+
+  elseif tabName == "autoVendor" then
+    LootSenseList.title:SetText("Auto Vendor")
+    LootSenseList.autoVendorContent:Show()
+    PanelTemplates_SelectTab(LootSenseList.tabs.autoVendor)
 
   elseif tabName == "settings" then
     LootSenseList.title:SetText("Settings")
@@ -293,11 +299,19 @@ LootSenseList.tabs.autoDelete:SetPoint("LEFT", LootSenseList.tabs.manage, "RIGHT
 LootSenseList.tabs.autoDelete:SetScript("OnClick", function(self) SwitchTab("autoDelete") end)
 ResizeTab(LootSenseList.tabs.autoDelete)
 
+LootSenseList.tabs.autoVendor = CreateFrame("Button", "LootSenseTabAutoVendor", LootSenseList, "CharacterFrameTabButtonTemplate")
+LootSenseList.tabs.autoVendor:SetText("Auto Vendor")
+LootSenseList.tabs.autoVendor.tabName = "LootSenseTabAutoVendor"
+LootSenseList.tabs.autoVendor:SetID(3)
+LootSenseList.tabs.autoVendor:SetPoint("LEFT", LootSenseList.tabs.autoDelete, "RIGHT", -15, 0)
+LootSenseList.tabs.autoVendor:SetScript("OnClick", function(self) SwitchTab("autoVendor") end)
+ResizeTab(LootSenseList.tabs.autoVendor)
+
 LootSenseList.tabs.settings = CreateFrame("Button", "LootSenseTabSettings", LootSenseList, "CharacterFrameTabButtonTemplate")
 LootSenseList.tabs.settings:SetText("Settings")
 LootSenseList.tabs.settings.tabName = "LootSenseTabSettings"
-LootSenseList.tabs.settings:SetID(3)
-LootSenseList.tabs.settings:SetPoint("LEFT", LootSenseList.tabs.autoDelete, "RIGHT", -15, 0)
+LootSenseList.tabs.settings:SetID(4)
+LootSenseList.tabs.settings:SetPoint("LEFT", LootSenseList.tabs.autoVendor, "RIGHT", -15, 0)
 LootSenseList.tabs.settings:SetScript("OnClick", function(self) SwitchTab("settings") end)
 ResizeTab(LootSenseList.tabs.settings)
 
@@ -388,10 +402,70 @@ LootSenseList.blueCheck.text:SetPoint("LEFT", LootSenseList.blueCheck, "RIGHT", 
 LootSenseList.blueCheck.text:SetText("Auto add blue items to delete list")
 AddTooltip(LootSenseList.blueCheck, "|cff0070ddBlue items|r", "Automatically adds rare-quality (blue) items to the delete list.")
 
+-- Auto Vendor Content
+LootSenseList.autoVendorContent = CreateFrame("Frame", nil, LootSenseList)
+LootSenseList.autoVendorContent:SetPoint("TOPLEFT", 10, -40)
+LootSenseList.autoVendorContent:SetPoint("BOTTOMRIGHT", -10, 10)
+LootSenseList.autoVendorContent:Hide()
 
+LootSenseList.autoVendorTitle = LootSenseList.autoVendorContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+LootSenseList.autoVendorTitle:SetPoint("TOP", 0, -15)
 
+LootSenseList.vendorGrayCheck = CreateFrame("CheckButton", "LootSenseVendorGrayCheck", LootSenseList.autoVendorContent, "UICheckButtonTemplate")
+LootSenseList.vendorGrayCheck:SetPoint("TOPLEFT", 20, -50)
+LootSenseList.vendorGrayCheck:SetWidth(24)
+LootSenseList.vendorGrayCheck:SetHeight(24)
+LootSenseList.vendorGrayCheck.text = LootSenseList.vendorGrayCheck:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+LootSenseList.vendorGrayCheck.text:SetPoint("LEFT", LootSenseList.vendorGrayCheck, "RIGHT", 4, 0)
+LootSenseList.vendorGrayCheck.text:SetText("Auto add gray items to vendor list")
+AddTooltip(LootSenseList.vendorGrayCheck, "|cff9d9d9dGray items|r", "Automatically adds poor-quality (gray) items to the vendor list.")
 
+LootSenseList.vendorWhiteCheck = CreateFrame("CheckButton", "LootSenseVendorWhiteCheck", LootSenseList.autoVendorContent, "UICheckButtonTemplate")
+LootSenseList.vendorWhiteCheck:SetPoint("TOPLEFT", LootSenseList.vendorGrayCheck, "BOTTOMLEFT", 0, -10)
+LootSenseList.vendorWhiteCheck:SetWidth(24)
+LootSenseList.vendorWhiteCheck:SetHeight(24)
+LootSenseList.vendorWhiteCheck.text = LootSenseList.vendorWhiteCheck:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+LootSenseList.vendorWhiteCheck.text:SetPoint("LEFT", LootSenseList.vendorWhiteCheck, "RIGHT", 4, 0)
+LootSenseList.vendorWhiteCheck.text:SetText("Auto add white items to vendor list")
+AddTooltip(LootSenseList.vendorWhiteCheck, "|cffffffffWhite items|r", "Automatically adds common-quality (white) items to the vendor list.")
 
+LootSenseList.vendorGreenCheck = CreateFrame("CheckButton", "LootSenseVendorGreenCheck", LootSenseList.autoVendorContent, "UICheckButtonTemplate")
+LootSenseList.vendorGreenCheck:SetPoint("TOPLEFT", LootSenseList.vendorWhiteCheck, "BOTTOMLEFT", 0, -10)
+LootSenseList.vendorGreenCheck:SetWidth(24)
+LootSenseList.vendorGreenCheck:SetHeight(24)
+LootSenseList.vendorGreenCheck.text = LootSenseList.vendorGreenCheck:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+LootSenseList.vendorGreenCheck.text:SetPoint("LEFT", LootSenseList.vendorGreenCheck, "RIGHT", 4, 0)
+LootSenseList.vendorGreenCheck.text:SetText("Auto add green items to vendor list")
+AddTooltip(LootSenseList.vendorGreenCheck, "|cff1eff00Green items|r", "Automatically adds uncommon-quality (green) items to the vendor list.")
+
+LootSenseList.vendorBlueCheck = CreateFrame("CheckButton", "LootSenseVendorBlueCheck", LootSenseList.autoVendorContent, "UICheckButtonTemplate")
+LootSenseList.vendorBlueCheck:SetPoint("TOPLEFT", LootSenseList.vendorGreenCheck, "BOTTOMLEFT", 0, -10)
+LootSenseList.vendorBlueCheck:SetWidth(24)
+LootSenseList.vendorBlueCheck:SetHeight(24)
+LootSenseList.vendorBlueCheck.text = LootSenseList.vendorBlueCheck:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+LootSenseList.vendorBlueCheck.text:SetPoint("LEFT", LootSenseList.vendorBlueCheck, "RIGHT", 4, 0)
+LootSenseList.vendorBlueCheck.text:SetText("Auto add blue items to vendor list")
+AddTooltip(LootSenseList.vendorBlueCheck, "|cff0070ddBlue items|r", "Automatically adds rare-quality (blue) items to the vendor list.")
+
+LootSenseList.vendorGrayCheck:SetScript("OnClick", function(self)
+    LootSense_autoVendor.gray = self:GetChecked()
+    DEFAULT_CHAT_FRAME:AddMessage("|cffaaaaaa[LootSense]|r Auto-vendor gray items: " .. (self:GetChecked() and "|cff33ff33ON|r" or "|cffff3333OFF|r"))
+end)
+
+LootSenseList.vendorWhiteCheck:SetScript("OnClick", function(self)
+    LootSense_autoVendor.white = self:GetChecked()
+    DEFAULT_CHAT_FRAME:AddMessage("|cffffffff[LootSense]|r Auto-vendor white items: " .. (self:GetChecked() and "|cff33ff33ON|r" or "|cffff3333OFF|r"))
+end)
+
+LootSenseList.vendorGreenCheck:SetScript("OnClick", function(self)
+    LootSense_autoVendor.green = self:GetChecked()
+    DEFAULT_CHAT_FRAME:AddMessage("|cff55ff55[LootSense]|r Auto-vendor green items: " .. (self:GetChecked() and "|cff33ff33ON|r" or "|cffff3333OFF|r"))
+end)
+
+LootSenseList.vendorBlueCheck:SetScript("OnClick", function(self)
+    LootSense_autoVendor.blue = self:GetChecked()
+    DEFAULT_CHAT_FRAME:AddMessage("|cff0070dd[LootSense]|r Auto-vendor blue items: " .. (self:GetChecked() and "|cff33ff33ON|r" or "|cffff3333OFF|r"))
+end)
 
 local f = CreateFrame("Frame")
 f:RegisterEvent("ADDON_LOADED")
@@ -406,17 +480,27 @@ f:SetScript("OnEvent", function(self, event)
 		}
 	end
 
+	if not LootSense_autoVendor then
+		LootSense_autoVendor = {
+			gray = false,
+			white = false,
+			green = false,
+			blue = false,
+		}
+	end
+
 	if LootSense_paused == nil then
 		LootSense_paused = false
 	end
-
-
-
 
 	LootSenseList.grayCheck:SetChecked(LootSense_autoDelete.gray)
 	LootSenseList.whiteCheck:SetChecked(LootSense_autoDelete.white)
 	LootSenseList.greenCheck:SetChecked(LootSense_autoDelete.green)
 	LootSenseList.blueCheck:SetChecked(LootSense_autoDelete.blue)
+	LootSenseList.vendorGrayCheck:SetChecked(LootSense_autoVendor.gray)
+	LootSenseList.vendorWhiteCheck:SetChecked(LootSense_autoVendor.white)
+	LootSenseList.vendorGreenCheck:SetChecked(LootSense_autoVendor.green)
+	LootSenseList.vendorBlueCheck:SetChecked(LootSense_autoVendor.blue)
 	LootSenseList.pauseCheck:SetChecked(LootSense_paused)
 end)
 
@@ -952,6 +1036,7 @@ lootFrame:SetScript("OnEvent", function(self, event)
 
                
 				if itemID then
+					-- Auto-delete checks (takes priority)
 					if LootSense_autoDelete.gray and quality == 0 and not isInList(itemID, LootSense_delete) then
 						table.insert(LootSense_delete, { id = itemID, name = name })
 						LootSlot(slot)
@@ -975,6 +1060,31 @@ lootFrame:SetScript("OnEvent", function(self, event)
 						LootSlot(slot)
 						DEFAULT_CHAT_FRAME:AddMessage("|cff0070ddAuto-deleted blue:|r " .. name)
 						LootSense_LogInfo("Auto-delete (blue): " .. name .. " (ID: " .. itemID .. ")")
+						return
+					-- Auto-vendor checks
+					elseif LootSense_autoVendor and LootSense_autoVendor.gray and quality == 0 and not isInList(itemID, LootSense_vendor) then
+						table.insert(LootSense_vendor, { id = itemID, name = name })
+						LootSlot(slot)
+						DEFAULT_CHAT_FRAME:AddMessage("|cff9d9d9dAuto-vendor gray:|r " .. name)
+						LootSense_LogInfo("Auto-vendor (gray): " .. name .. " (ID: " .. itemID .. ")")
+						return
+					elseif LootSense_autoVendor and LootSense_autoVendor.white and quality == 1 and not isInList(itemID, LootSense_vendor) then
+						table.insert(LootSense_vendor, { id = itemID, name = name })
+						LootSlot(slot)
+						DEFAULT_CHAT_FRAME:AddMessage("|cffffffffAuto-vendor white:|r " .. name)
+						LootSense_LogInfo("Auto-vendor (white): " .. name .. " (ID: " .. itemID .. ")")
+						return
+					elseif LootSense_autoVendor and LootSense_autoVendor.green and quality == 2 and not isInList(itemID, LootSense_vendor) then
+						table.insert(LootSense_vendor, { id = itemID, name = name })
+						LootSlot(slot)
+						DEFAULT_CHAT_FRAME:AddMessage("|cff1eff00Auto-vendor green:|r " .. name)
+						LootSense_LogInfo("Auto-vendor (green): " .. name .. " (ID: " .. itemID .. ")")
+						return
+					elseif LootSense_autoVendor and LootSense_autoVendor.blue and quality == 3 and not isInList(itemID, LootSense_vendor) then
+						table.insert(LootSense_vendor, { id = itemID, name = name })
+						LootSlot(slot)
+						DEFAULT_CHAT_FRAME:AddMessage("|cff0070ddAuto-vendor blue:|r " .. name)
+						LootSense_LogInfo("Auto-vendor (blue): " .. name .. " (ID: " .. itemID .. ")")
 						return
 					end
 				else
