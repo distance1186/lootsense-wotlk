@@ -9,7 +9,13 @@ LootSense_DebugLog = LootSense_DebugLog or {}
 LootSense_DebugEnabled = LootSense_DebugEnabled or false
 
 local MAX_LOG_ENTRIES = 500
-local versionNumber = "1.0.1"
+local versionNumber = "1.0.2"
+
+-- Bag scanning queue system
+local BagScanQueue = {}
+local BagScanDisplayed = {}
+local MAX_DISPLAYED_ITEMS = 5
+local SeenItemsThisSession = {} -- Track items we've already prompted for this session
 
 -- Debug/Error logging functions
 local function LootSense_Log(level, message)
@@ -808,6 +814,324 @@ SlashCmdList["LootSenseLIST"] = function(msg)
         DEFAULT_CHAT_FRAME:AddMessage("  |cffffffff/ls clearlog|r - Clear the debug log")
     end
 end
+
+-- =====================================================
+-- BAG SCANNER FRAME - For items added directly to bags
+-- =====================================================
+
+local BagScanFrame = CreateFrame("Frame", "LootSenseBagScanner", UIParent)
+BagScanFrame:SetWidth(320)
+BagScanFrame:SetHeight(200)
+BagScanFrame:SetPoint("CENTER", UIParent, "CENTER", 200, 100)
+BagScanFrame:Hide()
+BagScanFrame:SetMovable(true)
+BagScanFrame:EnableMouse(true)
+BagScanFrame:RegisterForDrag("LeftButton")
+BagScanFrame:SetScript("OnDragStart", function(self) self:StartMoving() end)
+BagScanFrame:SetScript("OnDragStop", function(self) self:StopMovingOrSizing() end)
+BagScanFrame:SetBackdrop({
+    bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+    tile = true, tileSize = 16, edgeSize = 16,
+    insets = { left = 4, right = 4, top = 4, bottom = 4 }
+})
+BagScanFrame:SetBackdropColor(0,0,0,0.85)
+BagScanFrame:SetBackdropBorderColor(0.4,0.6,0.8,1)
+
+BagScanFrame.title = BagScanFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+BagScanFrame.title:SetFont("Fonts\\FRIZQT__.TTF", 14, "OUTLINE")
+BagScanFrame.title:SetPoint("TOP", 0, -8)
+BagScanFrame.title:SetText("|cff33ffccNew Items|r")
+
+BagScanFrame.queueText = BagScanFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+BagScanFrame.queueText:SetPoint("TOPRIGHT", -10, -10)
+BagScanFrame.queueText:SetText("")
+
+BagScanFrame.items = {}
+
+local function IsItemInAnyList(itemID)
+    for i = 1, #LootSense_keep do
+        if LootSense_keep[i].id == itemID then return true end
+    end
+    for i = 1, #LootSense_vendor do
+        if LootSense_vendor[i].id == itemID then return true end
+    end
+    for i = 1, #LootSense_delete do
+        if LootSense_delete[i].id == itemID then return true end
+    end
+    return false
+end
+
+local function UpdateBagScanQueueDisplay()
+    -- Update queue counter
+    local totalQueued = #BagScanQueue
+    if totalQueued > 0 then
+        BagScanFrame.queueText:SetText("|cffaaaaaa" .. #BagScanDisplayed .. "/" .. totalQueued .. " queued|r")
+    else
+        BagScanFrame.queueText:SetText("")
+    end
+end
+
+local function RemoveFromBagScanDisplay(itemID)
+    -- Remove from displayed list
+    for i = #BagScanDisplayed, 1, -1 do
+        if BagScanDisplayed[i].id == itemID then
+            if BagScanDisplayed[i].row then
+                BagScanDisplayed[i].row:Hide()
+            end
+            table.remove(BagScanDisplayed, i)
+            break
+        end
+    end
+end
+
+local function RefreshBagScanFrame()
+    -- Hide all current rows
+    for _, item in pairs(BagScanDisplayed) do
+        if item.row then item.row:Hide() end
+    end
+    BagScanDisplayed = {}
+    
+    -- Fill displayed from queue (up to MAX_DISPLAYED_ITEMS)
+    local displayCount = 0
+    local lastRow = nil
+    
+    for i = 1, #BagScanQueue do
+        if displayCount >= MAX_DISPLAYED_ITEMS then break end
+        
+        local queueItem = BagScanQueue[i]
+        local alreadyDisplayed = false
+        for _, d in pairs(BagScanDisplayed) do
+            if d.id == queueItem.id then alreadyDisplayed = true break end
+        end
+        
+        if not alreadyDisplayed then
+            displayCount = displayCount + 1
+            
+            local row = CreateFrame("Frame", nil, BagScanFrame)
+            row:SetWidth(300)
+            row:SetHeight(22)
+            
+            if lastRow then
+                row:SetPoint("TOPLEFT", lastRow, "BOTTOMLEFT", 0, -5)
+            else
+                row:SetPoint("TOPLEFT", BagScanFrame, "TOPLEFT", 10, -30)
+            end
+            
+            row.highlight = row:CreateTexture(nil, "BACKGROUND")
+            row.highlight:SetAllPoints(row)
+            row.highlight:SetTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
+            row.highlight:SetBlendMode("ADD")
+            row.highlight:SetAlpha(0.3)
+            row.highlight:Hide()
+            
+            row.icon = row:CreateTexture(nil, "OVERLAY")
+            row.icon:SetWidth(18)
+            row.icon:SetHeight(18)
+            row.icon:SetPoint("LEFT", row, "LEFT", 5, 0)
+            row.icon:SetTexture(queueItem.texture or "Interface\\Icons\\INV_Misc_QuestionMark")
+            
+            row.text = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            row.text:SetPoint("LEFT", row.icon, "RIGHT", 5, 0)
+            row.text:SetText(queueItem.name or "?")
+            if queueItem.quality and colors[queueItem.quality] then
+                row.text:SetTextColor(unpack(colors[queueItem.quality]))
+            else
+                row.text:SetTextColor(1,1,1)
+            end
+            
+            row:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                if queueItem.bag and queueItem.slot then
+                    GameTooltip:SetBagItem(queueItem.bag, queueItem.slot)
+                else
+                    GameTooltip:SetText(queueItem.name)
+                end
+                GameTooltip:Show()
+                row.highlight:Show()
+            end)
+            row:SetScript("OnLeave", function(self)
+                GameTooltip:Hide()
+                row.highlight:Hide()
+            end)
+            
+            -- Action buttons
+            local function makeActionBtn(iconPath, tooltip, action, xoff)
+                local btn = CreateFrame("Button", nil, row)
+                btn:SetWidth(22)
+                btn:SetHeight(22)
+                btn:SetPoint("LEFT", row, "LEFT", xoff, 0)
+                btn:SetNormalTexture(iconPath)
+                btn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
+                
+                btn:SetScript("OnEnter", function(self)
+                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                    GameTooltip:SetText(tooltip)
+                    GameTooltip:Show()
+                    row.highlight:Show()
+                end)
+                btn:SetScript("OnLeave", function(self)
+                    GameTooltip:Hide()
+                    row.highlight:Hide()
+                end)
+                btn:SetScript("OnClick", function(self)
+                    local entry = { id = queueItem.id, name = queueItem.name }
+                    
+                    if action == "keep" then
+                        table.insert(LootSense_keep, entry)
+                        DEFAULT_CHAT_FRAME:AddMessage("Keep: " .. queueItem.name .. " (ID: " .. queueItem.id .. ")")
+                        LootSense_LogInfo("Added to KEEP list (bag scan): " .. queueItem.name)
+                    elseif action == "vendor" then
+                        table.insert(LootSense_vendor, entry)
+                        DEFAULT_CHAT_FRAME:AddMessage("Vendor: " .. queueItem.name .. " (ID: " .. queueItem.id .. ")")
+                        LootSense_LogInfo("Added to VENDOR list (bag scan): " .. queueItem.name)
+                    elseif action == "delete" then
+                        table.insert(LootSense_delete, entry)
+                        DEFAULT_CHAT_FRAME:AddMessage("Delete: " .. queueItem.name .. " (ID: " .. queueItem.id .. ")")
+                        LootSense_LogInfo("Added to DELETE list (bag scan): " .. queueItem.name)
+                        AutoTrash:Show() -- Trigger deletion
+                    elseif action == "ignore" then
+                        LootSense_LogDebug("Ignored (bag scan): " .. queueItem.name)
+                    end
+                    
+                    -- Remove from queue
+                    for j = #BagScanQueue, 1, -1 do
+                        if BagScanQueue[j].id == queueItem.id then
+                            table.remove(BagScanQueue, j)
+                            break
+                        end
+                    end
+                    
+                    -- Refresh display
+                    RefreshBagScanFrame()
+                end)
+                return btn
+            end
+            
+            row.keep = makeActionBtn("Interface\\Buttons\\Button-Backpack-Up", "Keep", "keep", 180)
+            row.vendor = makeActionBtn("Interface\\Buttons\\UI-GroupLoot-Coin-Up", "Vendor", "vendor", 210)
+            row.delete = makeActionBtn("Interface\\Buttons\\UI-GroupLoot-Pass-Up", "Delete", "delete", 240)
+            row.ignore = makeActionBtn("Interface\\Buttons\\UI-Panel-MinimizeButton-Up", "Ignore", "ignore", 270)
+            
+            queueItem.row = row
+            table.insert(BagScanDisplayed, queueItem)
+            lastRow = row
+        end
+    end
+    
+    -- Update frame size and visibility
+    local h = 40 + (displayCount * 27)
+    BagScanFrame:SetHeight(h)
+    
+    if #BagScanQueue > 0 then
+        BagScanFrame:Show()
+    else
+        BagScanFrame:Hide()
+    end
+    
+    UpdateBagScanQueueDisplay()
+end
+
+-- Bag scanner event handler
+local BagScanner = CreateFrame("Frame")
+BagScanner:RegisterEvent("BAG_UPDATE")
+BagScanner:RegisterEvent("PLAYER_ENTERING_WORLD")
+BagScanner.lastScan = 0
+BagScanner.pendingScan = false
+
+BagScanner:SetScript("OnEvent", function(self, event, bagID)
+    if LootSense_paused then return end
+    
+    -- Debounce - don't scan too frequently
+    if event == "BAG_UPDATE" then
+        self.pendingScan = true
+    end
+end)
+
+BagScanner:SetScript("OnUpdate", function(self, elapsed)
+    if not self.pendingScan then return end
+    if GetTime() - self.lastScan < 0.5 then return end -- 0.5 second debounce
+    
+    self.pendingScan = false
+    self.lastScan = GetTime()
+    
+    if LootSense_paused then return end
+    
+    -- Scan all bags for unknown items
+    for bag = 0, 4 do
+        for slot = 1, GetContainerNumSlots(bag) do
+            local link = GetContainerItemLink(bag, slot)
+            if link then
+                local _, _, id = string.find(link, "item:(%d+):")
+                local itemID = id and tonumber(id)
+                
+                if itemID then
+                    local itemName, _, itemRarity, _, _, _, _, _, _, itemTexture = GetItemInfo(link)
+                    
+                    if itemName and not IsItemInAnyList(itemID) and not SeenItemsThisSession[itemID] then
+                        -- Check if already in queue
+                        local inQueue = false
+                        for _, q in pairs(BagScanQueue) do
+                            if q.id == itemID then inQueue = true break end
+                        end
+                        
+                        if not inQueue then
+                            -- Check auto-delete settings
+                            if LootSense_autoDelete.gray and itemRarity == 0 then
+                                table.insert(LootSense_delete, { id = itemID, name = itemName })
+                                LootSense_LogInfo("Auto-delete (gray, bag scan): " .. itemName)
+                                AutoTrash:Show()
+                            elseif LootSense_autoDelete.white and itemRarity == 1 then
+                                table.insert(LootSense_delete, { id = itemID, name = itemName })
+                                LootSense_LogInfo("Auto-delete (white, bag scan): " .. itemName)
+                                AutoTrash:Show()
+                            elseif LootSense_autoDelete.green and itemRarity == 2 then
+                                table.insert(LootSense_delete, { id = itemID, name = itemName })
+                                LootSense_LogInfo("Auto-delete (green, bag scan): " .. itemName)
+                                AutoTrash:Show()
+                            elseif LootSense_autoDelete.blue and itemRarity == 3 then
+                                table.insert(LootSense_delete, { id = itemID, name = itemName })
+                                LootSense_LogInfo("Auto-delete (blue, bag scan): " .. itemName)
+                                AutoTrash:Show()
+                            -- Check auto-vendor settings
+                            elseif LootSense_autoVendor and LootSense_autoVendor.gray and itemRarity == 0 then
+                                table.insert(LootSense_vendor, { id = itemID, name = itemName })
+                                LootSense_LogInfo("Auto-vendor (gray, bag scan): " .. itemName)
+                            elseif LootSense_autoVendor and LootSense_autoVendor.white and itemRarity == 1 then
+                                table.insert(LootSense_vendor, { id = itemID, name = itemName })
+                                LootSense_LogInfo("Auto-vendor (white, bag scan): " .. itemName)
+                            elseif LootSense_autoVendor and LootSense_autoVendor.green and itemRarity == 2 then
+                                table.insert(LootSense_vendor, { id = itemID, name = itemName })
+                                LootSense_LogInfo("Auto-vendor (green, bag scan): " .. itemName)
+                            elseif LootSense_autoVendor and LootSense_autoVendor.blue and itemRarity == 3 then
+                                table.insert(LootSense_vendor, { id = itemID, name = itemName })
+                                LootSense_LogInfo("Auto-vendor (blue, bag scan): " .. itemName)
+                            else
+                                -- Add to queue for user decision
+                                SeenItemsThisSession[itemID] = true
+                                table.insert(BagScanQueue, {
+                                    id = itemID,
+                                    name = itemName,
+                                    quality = itemRarity,
+                                    texture = itemTexture,
+                                    bag = bag,
+                                    slot = slot
+                                })
+                                LootSense_LogDebug("Queued for decision: " .. itemName)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    RefreshBagScanFrame()
+end)
+
+-- =====================================================
+-- LOOT HELPER FRAME - For normal looting
+-- =====================================================
 
 local LootHelperFrame = CreateFrame("Frame", "ShaguLootHelper", UIParent)
 LootHelperFrame:SetWidth(320)
