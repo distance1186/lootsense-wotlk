@@ -333,7 +333,50 @@ LootSenseList.pauseCheck:SetScript("OnClick", function(self)
 	end
 end)
 
-LootSenseList.autoDeleteContent = CreateFrame("Frame", nil, LootSenseList)
+-- Vendor Price Threshold UI
+LootSenseList.thresholdLabel = LootSenseList.settingsContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+LootSenseList.thresholdLabel:SetPoint("TOPLEFT", LootSenseList.pauseCheck, "BOTTOMLEFT", 0, -20)
+LootSenseList.thresholdLabel:SetText("Auto-sell items at vendor with price at or below:")
+
+LootSenseList.thresholdInput = CreateFrame("EditBox", "LootSenseThresholdInput", LootSenseList.settingsContent)
+LootSenseList.thresholdInput:SetPoint("TOPLEFT", LootSenseList.thresholdLabel, "BOTTOMLEFT", 0, -5)
+LootSenseList.thresholdInput:SetWidth(80)
+LootSenseList.thresholdInput:SetHeight(24)
+LootSenseList.thresholdInput:SetFontObject(GameFontHighlight)
+LootSenseList.thresholdInput:SetAutoFocus(false)
+LootSenseList.thresholdInput:SetText("0")
+
+LootSenseList.thresholdInput.bg = LootSenseList.thresholdInput:CreateTexture(nil, "BACKGROUND")
+LootSenseList.thresholdInput.bg:SetTexture("Interface\\ChatFrame\\ChatFrameBackground")
+LootSenseList.thresholdInput.bg:SetVertexColor(0, 0, 0, 0.5)
+LootSenseList.thresholdInput.bg:SetAllPoints(LootSenseList.thresholdInput)
+
+LootSenseList.thresholdGoldLabel = LootSenseList.settingsContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+LootSenseList.thresholdGoldLabel:SetPoint("LEFT", LootSenseList.thresholdInput, "RIGHT", 5, 0)
+LootSenseList.thresholdGoldLabel:SetText("|cffffd700gold|r (0 = disabled)")
+
+LootSenseList.thresholdNote = LootSenseList.settingsContent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+LootSenseList.thresholdNote:SetPoint("TOPLEFT", LootSenseList.thresholdInput, "BOTTOMLEFT", 0, -4)
+LootSenseList.thresholdNote:SetText("|cffaaaaaaItems on your Keep list are never sold.|r")
+
+LootSenseList.thresholdInput:SetScript("OnEnterPressed", function(self)
+    local val = tonumber(self:GetText()) or 0
+    if val < 0 then val = 0 end
+    LootSense_VendorPriceThreshold = val * 10000 -- Convert gold to copper
+    self:SetText(tostring(val))
+    self:ClearFocus()
+    if val > 0 then
+        DEFAULT_CHAT_FRAME:AddMessage("|cff33ffcc[LootSense]|r Vendor price threshold set to " .. val .. " gold")
+    else
+        DEFAULT_CHAT_FRAME:AddMessage("|cff33ffcc[LootSense]|r Vendor price threshold disabled")
+    end
+end)
+
+LootSenseList.thresholdInput:SetScript("OnEscapePressed", function(self)
+    self:ClearFocus()
+end)
+
+LootSenseList.autoDeleteContent
 LootSenseList.autoDeleteContent:SetPoint("TOPLEFT", 10, -40)
 LootSenseList.autoDeleteContent:SetPoint("BOTTOMRIGHT", -10, 10)
 LootSenseList.autoDeleteContent:Hide()
@@ -485,6 +528,10 @@ f:SetScript("OnEvent", function(self, event)
 		LootSense_paused = false
 	end
 
+	if not LootSense_VendorPriceThreshold then
+		LootSense_VendorPriceThreshold = 0
+	end
+
 	LootSenseList.grayCheck:SetChecked(LootSense_autoDelete.gray)
 	LootSenseList.whiteCheck:SetChecked(LootSense_autoDelete.white)
 	LootSenseList.greenCheck:SetChecked(LootSense_autoDelete.green)
@@ -494,6 +541,7 @@ f:SetScript("OnEvent", function(self, event)
 	LootSenseList.vendorGreenCheck:SetChecked(LootSense_autoVendor.green)
 	LootSenseList.vendorBlueCheck:SetChecked(LootSense_autoVendor.blue)
 	LootSenseList.pauseCheck:SetChecked(LootSense_paused)
+	LootSenseList.thresholdInput:SetText(tostring((LootSense_VendorPriceThreshold or 0) / 10000))
 end)
 
 
@@ -1312,8 +1360,9 @@ end)
     return row
 end
 local lootFrame = CreateFrame("Frame")
-lootFrame:RegisterEvent("LOOT_OPENED")
-lootFrame:RegisterEvent("LOOT_CLOSED")
+-- Disabled: bag scanner handles all item decisions now
+-- lootFrame:RegisterEvent("LOOT_OPENED")
+-- lootFrame:RegisterEvent("LOOT_CLOSED")
 
 lootFrame:SetScript("OnEvent", function(self, event)
     if event == "LOOT_OPENED" then
@@ -1462,15 +1511,41 @@ AutoSell:SetScript("OnUpdate", function(self)
                 local _, _, rawLink = string.find(link, "(item:%d+:%d+:%d+:%d+)")
                 local itemName = rawLink and GetItemInfo(rawLink)
                 if itemName then
-                    itemName = string.lower(itemName)
+                    local lowerName = string.lower(itemName)
+                    local shouldSell = false
+
+                    -- Check vendor list
                     for i = 1, #LootSense_vendor do
                         local entry = LootSense_vendor[i]
-                        if entry.name and string.lower(entry.name) == itemName then
-                            ClearCursor()
-                            UseContainerItem(bag, slot)
-                            LootSense_LogInfo("Auto-sold to vendor: " .. entry.name)
-                            return
+                        if entry.name and string.lower(entry.name) == lowerName then
+                            shouldSell = true
+                            break
                         end
+                    end
+
+                    -- Check price threshold
+                    if not shouldSell and LootSense_VendorPriceThreshold and LootSense_VendorPriceThreshold > 0 then
+                        local _, _, _, _, _, _, _, _, _, _, sellPrice = GetItemInfo(rawLink)
+                        if sellPrice and sellPrice > 0 and sellPrice <= LootSense_VendorPriceThreshold then
+                            -- Skip items on the keep list
+                            local isKeep = false
+                            for i = 1, #LootSense_keep do
+                                if LootSense_keep[i].name and string.lower(LootSense_keep[i].name) == lowerName then
+                                    isKeep = true
+                                    break
+                                end
+                            end
+                            if not isKeep then
+                                shouldSell = true
+                            end
+                        end
+                    end
+
+                    if shouldSell then
+                        ClearCursor()
+                        UseContainerItem(bag, slot)
+                        LootSense_LogInfo("Auto-sold to vendor: " .. itemName)
+                        return
                     end
                 end
             end
