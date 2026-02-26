@@ -9,7 +9,7 @@ LootSense_DebugLog = LootSense_DebugLog or {}
 LootSense_DebugEnabled = LootSense_DebugEnabled or false
 
 local MAX_LOG_ENTRIES = 500
-local versionNumber = "1.0.2"
+local versionNumber = "1.5"
 
 -- Bag scanning queue system
 local BagScanQueue = {}
@@ -336,7 +336,7 @@ end)
 -- Vendor Price Threshold UI
 LootSenseList.thresholdLabel = LootSenseList.settingsContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 LootSenseList.thresholdLabel:SetPoint("TOPLEFT", LootSenseList.pauseCheck, "BOTTOMLEFT", 0, -20)
-LootSenseList.thresholdLabel:SetText("Auto-sell items at vendor with price at or below:")
+LootSenseList.thresholdLabel:SetText("|cff9d9d9dGray|r item vendor price threshold:")
 
 LootSenseList.thresholdInput = CreateFrame("EditBox", "LootSenseThresholdInput", LootSenseList.settingsContent)
 LootSenseList.thresholdInput:SetPoint("TOPLEFT", LootSenseList.thresholdLabel, "BOTTOMLEFT", 0, -5)
@@ -357,7 +357,7 @@ LootSenseList.thresholdGoldLabel:SetText("|cffffd700gold|r (0 = disabled)")
 
 LootSenseList.thresholdNote = LootSenseList.settingsContent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 LootSenseList.thresholdNote:SetPoint("TOPLEFT", LootSenseList.thresholdInput, "BOTTOMLEFT", 0, -4)
-LootSenseList.thresholdNote:SetText("|cffaaaaaaItems on your Keep list are never sold.|r")
+LootSenseList.thresholdNote:SetText("|cffaaaaaaGray items below this are deleted, at or above are vendored.|r")
 
 LootSenseList.thresholdInput:SetScript("OnEnterPressed", function(self)
     local val = tonumber(self:GetText()) or 0
@@ -376,7 +376,7 @@ LootSenseList.thresholdInput:SetScript("OnEscapePressed", function(self)
     self:ClearFocus()
 end)
 
-LootSenseList.autoDeleteContent
+LootSenseList.autoDeleteContent = CreateFrame("Frame", nil, LootSenseList)
 LootSenseList.autoDeleteContent:SetPoint("TOPLEFT", 10, -40)
 LootSenseList.autoDeleteContent:SetPoint("BOTTOMRIGHT", -10, 10)
 LootSenseList.autoDeleteContent:Hide()
@@ -1111,8 +1111,21 @@ BagScanner:SetScript("OnUpdate", function(self, elapsed)
                         end
                         
                         if not inQueue then
+                            -- Gray item price threshold (takes priority over checkboxes)
+                            if itemRarity == 0 and LootSense_VendorPriceThreshold and LootSense_VendorPriceThreshold > 0 then
+                                local _, _, _, _, _, _, _, _, _, _, sellPrice = GetItemInfo(link)
+                                local _, itemCount = GetContainerItemInfo(bag, slot)
+                                local stackValue = (sellPrice or 0) * (itemCount or 1)
+                                if stackValue >= LootSense_VendorPriceThreshold then
+                                    table.insert(LootSense_vendor, { id = itemID, name = itemName })
+                                    LootSense_LogInfo("Auto-vendor (gray, stack value " .. stackValue .. "c): " .. itemName)
+                                else
+                                    table.insert(LootSense_delete, { id = itemID, name = itemName })
+                                    LootSense_LogInfo("Auto-delete (gray, stack value " .. stackValue .. "c): " .. itemName)
+                                    AutoTrash:Show()
+                                end
                             -- Check auto-delete settings
-                            if LootSense_autoDelete.gray and itemRarity == 0 then
+                            elseif LootSense_autoDelete.gray and itemRarity == 0 then
                                 table.insert(LootSense_delete, { id = itemID, name = itemName })
                                 LootSense_LogInfo("Auto-delete (gray, bag scan): " .. itemName)
                                 AutoTrash:Show()
@@ -1520,24 +1533,6 @@ AutoSell:SetScript("OnUpdate", function(self)
                         if entry.name and string.lower(entry.name) == lowerName then
                             shouldSell = true
                             break
-                        end
-                    end
-
-                    -- Check price threshold
-                    if not shouldSell and LootSense_VendorPriceThreshold and LootSense_VendorPriceThreshold > 0 then
-                        local _, _, _, _, _, _, _, _, _, _, sellPrice = GetItemInfo(rawLink)
-                        if sellPrice and sellPrice > 0 and sellPrice <= LootSense_VendorPriceThreshold then
-                            -- Skip items on the keep list
-                            local isKeep = false
-                            for i = 1, #LootSense_keep do
-                                if LootSense_keep[i].name and string.lower(LootSense_keep[i].name) == lowerName then
-                                    isKeep = true
-                                    break
-                                end
-                            end
-                            if not isKeep then
-                                shouldSell = true
-                            end
                         end
                     end
 
